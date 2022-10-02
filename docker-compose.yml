@@ -1,0 +1,117 @@
+version: '3.3'
+
+services:
+  webphpm281:
+    build:
+      context: docker/apache
+      args:
+        PROJECT_DOMAIN: ${PROJECT_DOMAIN}
+        PROJECT_ROOT: ${PROJECT_ROOT}
+    depends_on:
+      - phpphpm281
+      - mysqlphpm281
+    ports:
+      - ${PORT_NGINX}:80
+      - "80:80"
+    volumes:
+      - ${PROJECT_PATH}:/var/www/project:cached
+      #- varnish.vcl:/etc/varnish/default.vcl:cached
+      #- varnish.secret:/etc/varnish/secret:cached
+      - ./var/data/apache/logs:${APACHE_LOG_DIR}
+    links:
+      - phpphpm281
+    networks:
+      - phpm281
+
+  phpphpm281:
+    build:
+      context: docker/php
+      args:
+        USER_ID: ${USER_ID}
+        PHP_TIMEZONE: ${PHP_TIMEZONE}
+    links:
+      - mysqlphpm281
+    volumes:
+      - ${PROJECT_PATH}:/var/www/project
+      - ./var/data/php/workspace:/var/www/workspace
+      #- /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      HISTFILE: /var/www/workspace/.bash_history
+      PROMPT_COMMAND: history -a
+      XDEBUG_CONFIG: remote_host=host.docker.internal
+    depends_on:
+      - mysqlphpm281
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - phpm281
+
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    ports:
+      - '${PORT_PHPMYADMIN}:80'
+    depends_on:
+      - mysqlphpm281
+    environment:
+      PMA_HOST: mysqlphpm281
+    networks:
+      - phpm281
+
+  esm281:
+    image: elasticsearch:8.2.2
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=false
+    volumes:
+      - ./var/data/es/workspace:/usr/share/elasticsearch/log
+    ports:
+      - target: 9200
+        published: 9200
+    networks:
+      - phpm281
+
+  kibanam21:
+    image: kibana:8.2.2
+    ports:
+      - target: 5601
+        published: 5601
+    depends_on:
+      - esm281
+    networks:
+      - phpm281
+
+
+
+  mysqlphpm281:
+    image: ${MYSQL_IMAGE}
+    container_name: mysqlphpm281-maria-103
+    restart: always
+    command: --max_allowed_packet=75005856
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    volumes:
+      - ${PROJECT_SQL_DB}:/var/lib/mysql
+      - ${PROJECT_SQL_PATH}:/docker-entrypoint-initdb.d
+    ports:
+      - '${PORT_MYSQL}:3306'
+    networks:
+      - phpm281
+
+  memcached:
+    container_name: memcached
+    image: memcached:latest
+    ports:
+      - "11211:11211"
+    entrypoint: memcached -m 256
+    networks:
+      - phpm281
+
+networks:
+  phpm281:
+    external:
+      name: m2
