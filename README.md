@@ -19,3 +19,5 @@ www
 ## Installation
 Go once download go to docker folder and run docker up
 
+## Youtube
+Checkout out how to setup in youtube https://youtu.be/A-WEANZnfTs
